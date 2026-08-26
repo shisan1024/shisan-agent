@@ -1,0 +1,38 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+*.pdb
+
+# Node.js / frontend dependencies
+node_modules/
+.pnpm-store/
+
+# Vite build output and caches
+dist/
+dist-ssr/
+*.local
+.vite/
+.vite-temp/
+
+# Tauri generated files
+agent-gui/gen/schemas/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
