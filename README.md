@@ -1,6 +1,6 @@
-# rust-agent
+# shisan-agent
 
-Rust workspace for the `rust-agent` project.
+Rust workspace for the `shisan-agent` project.
 
 ## Workspace Members
 

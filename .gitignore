@@ -36,3 +36,6 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# SSH keys
+id_ed25519*
