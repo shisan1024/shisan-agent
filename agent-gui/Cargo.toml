@@ -7,6 +7,7 @@ edition.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2.11.2", features = [] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
