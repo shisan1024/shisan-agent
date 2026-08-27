@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "agent-gui",
-        "width": 1920,
-        "height": 1080,
+        "width": 800,
+        "height": 600,
         "resizable": true,
         "decorations": false,
         "transparent": true,
@@ -28,6 +28,8 @@
   "bundle": {
     "active": false,
     "targets": "all",
-    "icon": ["icons/icon.png"]
+    "icon": [
+      "icons/icon.png"
+    ]
   }
 }
