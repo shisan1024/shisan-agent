@@ -1,210 +1,252 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+const backgrounds = import.meta.glob("./assets/background/*.gif", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const backgroundKeys = Object.keys(backgrounds);
+const INITIAL_KEY = "./assets/background/angelina_ride.gif";
+const INITIAL_URL = backgrounds[INITIAL_KEY] ?? backgroundKeys[0] ?? "";
+
+function getDayProgress() {
+  const now = new Date();
+  const secondsSinceMidnight =
+    now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  return secondsSinceMidnight / 86400;
+}
 
 const appWindow = getCurrentWindow();
 
-type SidebarIconProps = {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
+const RING_SIZE = 210;
+const STROKE_WIDTH = 20;
+const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+type MenuState = {
+  x: number;
+  y: number;
 };
 
-function SidebarIcon({ label, active, onClick, children }: SidebarIconProps) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      aria-pressed={active}
-      onClick={onClick}
-      className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
-        active
-          ? "bg-white text-black"
-          : "text-white hover:bg-white hover:text-black active:bg-white active:text-black"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function TodoIcon() {
-  return (
-    <svg
-      className="h-5 w-5"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9 11l3 3L22 4" />
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-    </svg>
-  );
-}
-
-function MessageIcon() {
-  return (
-    <svg
-      className="h-5 w-5"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg
-      className="h-5 w-5"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
+type MenuItem = {
+  label: string;
+  action: () => void | Promise<void>;
+};
 
 function App() {
-  const [activeSidebar, setActiveSidebar] = useState("todo");
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [progress, setProgress] = useState(getDayProgress);
+  const [currentKey, setCurrentKey] = useState(INITIAL_KEY);
+  const [currentImage, setCurrentImage] = useState(INITIAL_URL);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    appWindow
+      .isAlwaysOnTop()
+      .then((value) => {
+        if (!cancelled) {
+          setAlwaysOnTop(value);
+        }
+      })
+      .catch(() => {
+        // Keep the default state if the query fails.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setProgress(getDayProgress());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!alwaysOnTop) {
+      return;
+    }
+
+    let unlistenFocus: (() => void) | undefined;
+
+    void appWindow
+      .onFocusChanged(({ payload: focused }) => {
+        if (!focused) {
+          void appWindow.setAlwaysOnTop(true).catch(() => {});
+        }
+      })
+      .then((unlisten) => {
+        unlistenFocus = unlisten;
+      })
+      .catch(() => {});
+
+    const timer = window.setInterval(() => {
+      void appWindow.setAlwaysOnTop(true).catch(() => {});
+    }, 1000);
+
+    return () => {
+      unlistenFocus?.();
+      window.clearInterval(timer);
+    };
+  }, [alwaysOnTop]);
+
+  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    const menuWidth = 160;
+    const menuHeight = 130;
+    const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
+    const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
+
+    setMenu({ x, y });
+  };
+
+  const closeMenu = () => setMenu(null);
+
+  const handlePin = async () => {
+    const nextValue = !alwaysOnTop;
+
+    try {
+      await appWindow.setAlwaysOnTop(nextValue);
+
+      if (nextValue) {
+        await appWindow.setFocus();
+      }
+
+      setAlwaysOnTop(nextValue);
+    } catch (error) {
+      console.error("Failed to update always-on-top state", error);
+    }
+  };
+
+  const handleNext = () => {
+    const candidates = backgroundKeys.filter((key) => key !== currentKey);
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    const nextKey = candidates[Math.floor(Math.random() * candidates.length)];
+    setCurrentKey(nextKey);
+    setCurrentImage(backgrounds[nextKey]);
+  };
+
+  const handleExit = () => {
+    void appWindow.destroy();
+  };
+
+  const menuItems: MenuItem[] = [
+    {
+      label: alwaysOnTop ? "Unpin" : "Pin",
+      action: handlePin,
+    },
+    {
+      label: "Next Angelina",
+      action: handleNext,
+    },
+    {
+      label: "Exit",
+      action: handleExit,
+    },
+  ];
 
   return (
-    <div className="relative flex h-screen w-screen flex-col rounded-2xl bg-black text-white">
-      <svg
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-        viewBox="0 0 800 600"
-        preserveAspectRatio="none"
-      >
-        <rect
-          x="1"
-          y="1"
-          width="798"
-          height="598"
-          rx="16"
-          fill="none"
-          stroke="rgba(255,255,255,0.6)"
-          strokeWidth="2"
-          vectorEffect="non-scaling-stroke"
-          shapeRendering="geometricPrecision"
+    <div
+      onMouseDown={(event) => {
+        if (menu) {
+          return;
+        }
+        if (event.button !== 0) {
+          return;
+        }
+        event.preventDefault();
+        void appWindow.startDragging();
+      }}
+      onContextMenu={handleContextMenu}
+      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-transparent text-white"
+    >
+      <div className="flex flex-col items-center gap-2">
+        <div
+          className="relative flex cursor-grab items-center justify-center rounded-full active:cursor-grabbing"
+          style={{ width: "min(210px, 80vmin)", height: "min(210px, 80vmin)" }}
+        >
+        <svg
+          aria-hidden="true"
+          className="absolute inset-0 -rotate-90"
+          viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
+        >
+          <defs>
+            <linearGradient
+              id="progress-gradient"
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#FFB873" />
+              <stop offset="100%" stopColor="#E27C38" />
+            </linearGradient>
+          </defs>
+          <circle
+            cx={RING_SIZE / 2}
+            cy={RING_SIZE / 2}
+            r={RADIUS}
+            fill="none"
+            stroke="url(#progress-gradient)"
+            strokeWidth={STROKE_WIDTH}
+            strokeLinecap="round"
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={CIRCUMFERENCE * (1 - progress)}
+          />
+        </svg>
+
+        <img
+          src={currentImage}
+          alt="Angelina animation"
+          draggable={false}
+          className="pointer-events-none absolute h-[68%] w-[68%] rounded-full object-cover"
         />
-      </svg>
-      <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl">
-        <header
-        data-tauri-drag-region
-        className="flex h-12 shrink-0 items-center justify-between border-b-[2px] border-white/60 bg-black pl-4"
-      >
-        <span data-tauri-drag-region className="text-sm font-semibold uppercase tracking-wider">
-          agent-gui
-        </span>
-
-        <div className="flex h-full">
-          <button
-            type="button"
-            aria-label="Minimize"
-            title="Minimize"
-            onClick={() => appWindow.minimize()}
-            className="flex h-full w-12 items-center justify-center text-white transition-colors hover:bg-white hover:text-black"
-          >
-            <svg
-              className="h-4 w-4"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            >
-              <path d="M3 8.5h10" />
-            </svg>
-          </button>
-
-          <button
-            type="button"
-            aria-label="Maximize"
-            title="Maximize"
-            onClick={() => appWindow.toggleMaximize()}
-            className="flex h-full w-12 items-center justify-center text-white transition-colors hover:bg-white hover:text-black"
-          >
-            <svg
-              className="h-4 w-4"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <rect x="3" y="3" width="10" height="10" rx="1" />
-            </svg>
-          </button>
-
-          <button
-            type="button"
-            aria-label="Close"
-            title="Close"
-            onClick={() => appWindow.close()}
-            className="flex h-full w-12 items-center justify-center text-white transition-colors hover:bg-white hover:text-black"
-          >
-            <svg
-              className="h-4 w-4"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            >
-              <path d="m4 4 8 8M12 4l-8 8" />
-            </svg>
-          </button>
         </div>
-      </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-16 shrink-0 flex-col items-center gap-4 border-r-[2px] border-white/60 bg-black py-4">
-          <div className="flex flex-col items-center gap-4">
-            <SidebarIcon
-              label="Todo"
-              active={activeSidebar === "todo"}
-              onClick={() => setActiveSidebar("todo")}
-            >
-              <TodoIcon />
-            </SidebarIcon>
-
-            <SidebarIcon
-              label="Messages"
-              active={activeSidebar === "messages"}
-              onClick={() => setActiveSidebar("messages")}
-            >
-              <MessageIcon />
-            </SidebarIcon>
-          </div>
-
-          <div className="mt-auto">
-            <SidebarIcon
-              label="Settings"
-              active={activeSidebar === "settings"}
-              onClick={() => setActiveSidebar("settings")}
-            >
-              <SettingsIcon />
-            </SidebarIcon>
-          </div>
-        </aside>
-
-          <main className="min-w-0 flex-1 bg-black" />
-        </div>
       </div>
+
+      {menu && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={closeMenu}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              closeMenu();
+            }}
+          />
+          <div
+            className="fixed z-50 min-w-40 rounded-md border border-[#c0c0c0] bg-[#f2f2f2]/95 p-1 text-sm text-[#1a1a1a] shadow-2xl backdrop-blur-md"
+            style={{ left: menu.x, top: menu.y }}
+          >
+            {menuItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => {
+                  closeMenu();
+                  void item.action();
+                }}
+                className="flex w-full items-center rounded-md px-3 py-1.5 text-left transition-colors hover:bg-[#0078d7] hover:text-white"
+              >
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

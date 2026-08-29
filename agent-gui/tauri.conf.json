@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.example.agent-gui",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run build",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "ui/dist"
   },
@@ -13,12 +12,14 @@
     "windows": [
       {
         "title": "agent-gui",
-        "width": 800,
-        "height": 600,
+        "width": 252,
+        "height": 252,
         "resizable": true,
         "decorations": false,
         "transparent": true,
-        "center": true
+        "center": true,
+        "minWidth": 180,
+        "minHeight": 180
       }
     ],
     "security": {
