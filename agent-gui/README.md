@@ -12,7 +12,7 @@ This crate contains the desktop GUI application for `rust-agent`, built with:
 - Vite
 - Tailwind CSS
 
-The window is borderless. The main view is a circular local avatar/status image surrounded by a hollow progress ring. Drag anywhere to move the window. Right-clicking anywhere opens a small system menu with Pin (toggle always-on-top), Next Angelina, and Exit actions.
+The window is borderless. The main view is a circular local avatar/status image surrounded by a smooth gradient annular ring. Drag anywhere to move the window. Right-clicking anywhere opens a small system menu with Pin (toggle always-on-top), Next Angelina, and Exit actions.
 
 The displayed images are stored in `ui/src/assets/background/`. The “Next Angelina” menu item randomly switches to another GIF from that folder.
 
@@ -46,6 +46,6 @@ npm run tauri dev
 
 - `src/main.rs` - Tauri application entry point.
 - `ui/` - React + TypeScript + Vite frontend.
-- `ui/src/App.tsx` - Main GUI layout, progress ring, Pin/Next Angelina/Exit context menu.
+- `ui/src/App.tsx` - Main GUI layout, smooth gradient annular ring, Pin/Next Angelina/Exit context menu.
 - `ui/src/index.css` - Tailwind CSS entry.
 - `tauri.conf.json` - Tauri configuration.

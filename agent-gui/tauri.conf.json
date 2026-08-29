@@ -12,14 +12,14 @@
     "windows": [
       {
         "title": "agent-gui",
-        "width": 252,
-        "height": 252,
+        "width": 328,
+        "height": 328,
         "resizable": true,
         "decorations": false,
         "transparent": true,
         "center": true,
-        "minWidth": 180,
-        "minHeight": 180
+        "minWidth": 234,
+        "minHeight": 234
       }
     ],
     "security": {
