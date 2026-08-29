@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "Permissions for the main agent-gui window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-destroy",
+    "core:window:allow-close",
+    "core:window:allow-is-always-on-top",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-position",
+    "core:window:allow-center",
+    "core:window:allow-set-icon",
+    "core:image:allow-from-bytes",
+    "core:image:allow-from-path",
+    "core:webview:allow-create-webview-window",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "core:event:allow-emit-to"
+  ]
+}

@@ -1,5 +1,10 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { currentMonitor, getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { Image } from "@tauri-apps/api/image";
+import { listen } from "@tauri-apps/api/event";
+import ContextMenu from "./components/ContextMenu";
+import iconUrl from "./assets/icon.png";
 const backgrounds = import.meta.glob("./assets/background/*.gif", {
   eager: true,
   import: "default",
@@ -18,6 +23,19 @@ function getDayProgress() {
 
 const appWindow = getCurrentWindow();
 
+async function setAppIcon() {
+  try {
+    const response = await fetch(iconUrl);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const icon = await Image.fromBytes(bytes);
+    await appWindow.setIcon(icon);
+  } catch (error) {
+    console.error("Failed to set app icon", error);
+  }
+}
+
+void setAppIcon();
+
 const RING_SIZE = 182;
 const STROKE_WIDTH = 13;
 const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
@@ -28,17 +46,15 @@ type MenuState = {
   y: number;
 };
 
-type MenuItem = {
-  label: string;
-  action: () => void | Promise<void>;
-};
-
 function App() {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [progress, setProgress] = useState(getDayProgress);
   const [currentKey, setCurrentKey] = useState(INITIAL_KEY);
   const [currentImage, setCurrentImage] = useState(INITIAL_URL);
+
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const lastClickAt = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +82,35 @@ function App() {
 
     return () => {
       window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    void listen("chat-request-close", async () => {
+      try {
+        const chat = await WebviewWindow.getByLabel("chat");
+        if (!chat) {
+          console.log("[main] chat window not found");
+          return;
+        }
+
+        await chat.destroy();
+        console.log("[main] chat window destroyed");
+      } catch (error) {
+        console.error("[main] failed to destroy chat window", error);
+      }
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((error) => {
+        console.error("[main] failed to listen chat-request-close", error);
+      });
+
+    return () => {
+      unlisten?.();
     };
   }, []);
 
@@ -110,6 +155,63 @@ function App() {
 
   const closeMenu = () => setMenu(null);
 
+  const openChatWindow = async () => {
+    try {
+      const existing = await WebviewWindow.getByLabel("chat");
+      const monitor = await currentMonitor();
+      let centerPosition: { x: number; y: number } | undefined;
+
+      if (monitor) {
+        const scale = monitor.scaleFactor;
+        const monitorPosition = monitor.position.toLogical(scale);
+        const monitorSize = monitor.size.toLogical(scale);
+        centerPosition = {
+          x: Math.round(monitorPosition.x + (monitorSize.width - 330) / 2),
+          y: Math.round(monitorPosition.y + (monitorSize.height - 330) / 2),
+        };
+      }
+
+      if (existing) {
+        if (centerPosition) {
+          await existing.setPosition(
+            new LogicalPosition(centerPosition.x, centerPosition.y),
+          );
+        } else {
+          await existing.center();
+        }
+        void existing.setFocus();
+        return;
+      }
+
+      const chat = new WebviewWindow("chat", {
+        url: "index.html?window=chat",
+        title: "Angelina",
+        width: 330,
+        height: 330,
+        resizable: true,
+        decorations: false,
+        transparent: true,
+        center: !centerPosition,
+        x: centerPosition?.x,
+        y: centerPosition?.y,
+      });
+
+      if (centerPosition) {
+        chat.once("tauri://created", () => {
+          void chat.setPosition(
+            new LogicalPosition(centerPosition!.x, centerPosition!.y),
+          );
+        });
+      }
+
+      chat.once("tauri://error", (error) => {
+        console.error("Failed to open chat window", error);
+      });
+    } catch (error) {
+      console.error("Failed to open chat window", error);
+    }
+  };
+
   const handlePin = async () => {
     const nextValue = !alwaysOnTop;
 
@@ -142,21 +244,6 @@ function App() {
     void appWindow.destroy();
   };
 
-  const menuItems: MenuItem[] = [
-    {
-      label: alwaysOnTop ? "Unpin" : "Pin",
-      action: handlePin,
-    },
-    {
-      label: "Next Angelina",
-      action: handleNext,
-    },
-    {
-      label: "Exit",
-      action: handleExit,
-    },
-  ];
-
   return (
     <div
       onMouseDown={(event) => {
@@ -166,8 +253,34 @@ function App() {
         if (event.button !== 0) {
           return;
         }
-        event.preventDefault();
-        void appWindow.startDragging();
+
+        const now = Date.now();
+        if (now - lastClickAt.current < 300) {
+          lastClickAt.current = 0;
+          dragStart.current = null;
+          openChatWindow();
+          return;
+        }
+
+        lastClickAt.current = now;
+        dragStart.current = { x: event.clientX, y: event.clientY };
+      }}
+      onMouseMove={(event) => {
+        if (!dragStart.current) {
+          return;
+        }
+
+        const dx = event.clientX - dragStart.current.x;
+        const dy = event.clientY - dragStart.current.y;
+        if (Math.hypot(dx, dy) > 5) {
+          dragStart.current = null;
+          lastClickAt.current = 0;
+          event.preventDefault();
+          void appWindow.startDragging();
+        }
+      }}
+      onMouseUp={() => {
+        dragStart.current = null;
       }}
       onContextMenu={handleContextMenu}
       className="fixed inset-0 flex items-center justify-center overflow-hidden bg-transparent text-white"
@@ -183,7 +296,7 @@ function App() {
             viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
             style={{
               filter:
-                "drop-shadow(0 0 1.5px rgba(255,255,255,0.85)) drop-shadow(0 0 4.5px rgba(255,255,255,0.45))",
+                "drop-shadow(0 0 1.5px rgba(255,34,21,0.5)) drop-shadow(0 0 4.5px rgba(255,34,21,0.5))",
             }}
           >
             <defs>
@@ -195,6 +308,7 @@ function App() {
                 y2="100%"
               >
                 <stop offset="0%" stopColor="#FFB873" />
+                <stop offset="50%" stopColor="#FF0000" />
                 <stop offset="100%" stopColor="#E27C38" />
               </linearGradient>
             </defs>
@@ -222,35 +336,17 @@ function App() {
       </div>
 
       {menu && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={closeMenu}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              closeMenu();
-            }}
-          />
-          <div
-            className="fixed z-50 min-w-40 rounded-md border border-[#c0c0c0] bg-[#f2f2f2]/95 p-1 text-sm text-[#1a1a1a] shadow-2xl backdrop-blur-md"
-            style={{ left: menu.x, top: menu.y }}
-          >
-            {menuItems.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => {
-                  closeMenu();
-                  void item.action();
-                }}
-                className="flex w-full items-center rounded-md px-3 py-1.5 text-left transition-colors hover:bg-[#0078d7] hover:text-white"
-              >
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </>
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          alwaysOnTop={alwaysOnTop}
+          onPin={handlePin}
+          onNext={handleNext}
+          onExit={handleExit}
+          onClose={closeMenu}
+        />
       )}
+
     </div>
   );
 }

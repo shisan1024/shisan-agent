@@ -46,6 +46,8 @@ npm run tauri dev
 
 - `src/main.rs` - Tauri application entry point.
 - `ui/` - React + TypeScript + Vite frontend.
-- `ui/src/App.tsx` - Main GUI layout, smooth gradient annular ring, Pin/Next Angelina/Exit context menu.
+- `ui/src/App.tsx` - Main GUI layout.
+- `ui/src/components/ContextMenu.tsx` - Right-click menu component.
+- `ui/src/components/ChatWindow.tsx` - Double-click chat window component.
 - `ui/src/index.css` - Tailwind CSS entry.
 - `tauri.conf.json` - Tauri configuration.
