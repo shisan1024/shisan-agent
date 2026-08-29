@@ -10,28 +10,3 @@ body,
   user-select: none;
 }
 
-.ring-static {
-  width: 182px;
-  height: 182px;
-  border-radius: 50%;
-  position: relative;
-  transform: translateZ(0);
-  -webkit-font-smoothing: antialiased;
-}
-
-.ring-static::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  padding: 13px;
-  background: linear-gradient(90deg, #FFB873, #E27C38);
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}

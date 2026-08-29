@@ -9,7 +9,19 @@ const backgroundKeys = Object.keys(backgrounds);
 const INITIAL_KEY = "./assets/background/angelina_ride.gif";
 const INITIAL_URL = backgrounds[INITIAL_KEY] ?? backgroundKeys[0] ?? "";
 
+function getDayProgress() {
+  const now = new Date();
+  const secondsSinceMidnight =
+    now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  return secondsSinceMidnight / 86400;
+}
+
 const appWindow = getCurrentWindow();
+
+const RING_SIZE = 182;
+const STROKE_WIDTH = 13;
+const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 type MenuState = {
   x: number;
@@ -24,6 +36,7 @@ type MenuItem = {
 function App() {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [progress, setProgress] = useState(getDayProgress);
   const [currentKey, setCurrentKey] = useState(INITIAL_KEY);
   const [currentImage, setCurrentImage] = useState(INITIAL_URL);
 
@@ -43,6 +56,16 @@ function App() {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setProgress(getDayProgress());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -154,7 +177,39 @@ function App() {
           className="relative flex cursor-grab items-center justify-center rounded-full active:cursor-grabbing"
           style={{ width: "182px", height: "182px" }}
         >
-          <div className="ring-static" />
+          <svg
+            aria-hidden="true"
+            className="absolute inset-0 -rotate-90"
+            viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
+            style={{
+              filter:
+                "drop-shadow(0 0 1.5px rgba(255,255,255,0.85)) drop-shadow(0 0 4.5px rgba(255,255,255,0.45))",
+            }}
+          >
+            <defs>
+              <linearGradient
+                id="progress-gradient"
+                x1="0%"
+                y1="0%"
+                x2="100%"
+                y2="100%"
+              >
+                <stop offset="0%" stopColor="#FFB873" />
+                <stop offset="100%" stopColor="#E27C38" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RADIUS}
+              fill="none"
+              stroke="url(#progress-gradient)"
+              strokeWidth={STROKE_WIDTH}
+              strokeLinecap="round"
+              strokeDasharray={CIRCUMFERENCE}
+              strokeDashoffset={CIRCUMFERENCE * (1 - progress)}
+            />
+          </svg>
 
           <img
             src={currentImage}
