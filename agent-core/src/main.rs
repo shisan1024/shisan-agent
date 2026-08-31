@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use openai_api_rs::v1::{api::OpenAIClient, 
-    chat_completion::{self, ChatCompletionMessage, chat_completion::ChatCompletionRequest}
+    chat_completion::{self, chat_completion::ChatCompletionRequest}
 };
 
 
