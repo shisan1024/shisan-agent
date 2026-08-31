@@ -8,8 +8,8 @@ node_modules/
 .pnpm-store/
 
 # Vite build output and caches
-dist/
-dist-ssr/
+# dist/
+# dist-ssr/
 *.local
 .vite/
 .vite-temp/
