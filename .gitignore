@@ -37,5 +37,8 @@ lerna-debug.log*
 *.sln
 *.sw?
 
+# Environment / secrets
+.env
+
 # SSH keys
 id_ed25519*

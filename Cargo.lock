@@ -13,6 +13,7 @@ name = "agent-core"
 version = "0.1.0"
 dependencies = [
  "agent-provider",
+ "dotenv",
  "tokio",
 ]
 
@@ -730,6 +731,12 @@ dependencies = [
  "selectors",
  "tendril",
 ]
+
+[[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
 name = "dpi"
@@ -2531,7 +2538,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2782,7 +2789,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

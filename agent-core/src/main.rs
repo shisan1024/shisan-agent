@@ -1,14 +1,15 @@
 use agent_provider::provider_calling::model;
 use agent_provider::{ChatCompletionRequest, DeepSeekClient};
 
-const DEEPSEEK_API_KEY: &str = "sk-c220530eece94e7fbf61d04c4c6ccaed";
-
 #[tokio::main]
 async fn main() {
     // Smoke-test the exposed DeepSeek client with both non-streaming and streaming calls.
-    let api_key = std::env::var("DEEPSEEK_API_KEY").unwrap_or_else(|_| DEEPSEEK_API_KEY.to_owned());
+    // Load the API key from src/.env.
+    dotenv::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/src/.env")).ok();
+    let api_key = std::env::var("DEEPSEEK_API_KEY")
+        .expect("DEEPSEEK_API_KEY must be defined in src/.env");
     let client = DeepSeekClient::new(api_key);
-    let request = ChatCompletionRequest::new(model::V4_PRO, "Hello, DeepSeek!");
+    let request = ChatCompletionRequest::new(model::V4_FLASH, "Hello, DeepSeek!");
 
     println!("DeepSeekClient base URL: {}", client.base_url());
     println!("Chat request model: {}", request.model);
