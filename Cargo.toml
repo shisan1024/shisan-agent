@@ -1,8 +1,7 @@
 [workspace]
 members = [
     "agent-core",
-    "agent-provider",
-    "agent-gui",
+    "agent-gui"
 ]
 resolver = "2"
 

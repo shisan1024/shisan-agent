@@ -1,57 +1,33 @@
-use agent_provider::provider_calling::model;
-use agent_provider::{ChatCompletionRequest, DeepSeekClient};
+use std::error::Error;
+
+use openai_api_rs::v1::{api::OpenAIClient, 
+    chat_completion::{self, ChatCompletionMessage, chat_completion::ChatCompletionRequest}
+};
+
 
 #[tokio::main]
-async fn main() {
-    // Smoke-test the exposed DeepSeek client with both non-streaming and streaming calls.
-    // Load the API key from src/.env.
+async fn main() -> Result<(), Box<dyn Error>> {
+    // create client, reads OPENAI_API_KEY environment variable for API key.
     dotenv::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/src/.env")).ok();
     let api_key = std::env::var("DEEPSEEK_API_KEY")
         .expect("DEEPSEEK_API_KEY must be defined in src/.env");
-    let client = DeepSeekClient::new(api_key);
-    let request = ChatCompletionRequest::new(model::V4_FLASH, "Hello, DeepSeek!");
+    let mut client = OpenAIClient::builder()
+                                    .with_endpoint("https://api.deepseek.com")
+                                    .with_api_key(api_key).build()?;
 
-    println!("DeepSeekClient base URL: {}", client.base_url());
-    println!("Chat request model: {}", request.model);
-    println!("test main");
+    let req = ChatCompletionRequest::new(
+        "deepseek-v4-flash".to_string(),
+        vec![chat_completion::ChatCompletionMessage {
+            role: chat_completion::MessageRole::user,
+            content: chat_completion::Content::Text(String::from("What is bitcoin?")),
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+    );
 
-    // Non-streaming chat completion case.
-    match client.chat_completion(&request).await {
-        Ok(response) => {
-            println!(
-                "Non-stream response id: {}, model: {}",
-                response.id, response.model
-            );
-            for choice in response.choices {
-                println!(
-                    "Non-stream choice: finish_reason={:?}, content={:?}",
-                    choice.finish_reason, choice.message.content
-                );
-            }
-        }
-        Err(error) => eprintln!("Non-stream call failed: {error}"),
-    }
+    let result = client.chat_completion(req).await?;
+    println!("Content: {:?}", result.inner.choices[0].message.content);
 
-    // Streaming chat completion case.
-    match client.chat_completion_stream(&request).await {
-        Ok(mut response) => {
-            println!("Stream response status: {}", response.status());
-            loop {
-                match response.chunk().await {
-                    Ok(Some(chunk)) => {
-                        let text = String::from_utf8_lossy(&chunk);
-                        if !text.trim().is_empty() {
-                            println!("{}", text.trim_end());
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(error) => {
-                        eprintln!("Stream read error: {error}");
-                        break;
-                    }
-                }
-            }
-        }
-        Err(error) => eprintln!("Stream call failed: {error}"),
-    }
+    Ok(())
 }
