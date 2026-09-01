@@ -1,2 +1,5 @@
 /target
 /node_modules
+
+# Vite build output (regenerated on every build; keep out of version control)
+/ui/dist/

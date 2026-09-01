@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Image } from "@tauri-apps/api/image";
+import MessageBox from "./agui/MessageBox";
+import Sidebar from "./chat/Sidebar";
+import { useConversationHistory } from "./chat/useConversationHistory";
 import iconUrl from "../assets/icon.png";
 
 const appWindow = getCurrentWindow();
-
-type ChatMessage = {
-  id: number;
-  author: "user" | "assistant";
-  text: string;
-};
 
 type ChatWindowProps = {
   onClose: () => void;
@@ -45,14 +42,16 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
       });
   }, [standalone]);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
-      author: "assistant",
-      text: "Hello! This is the Angelina chat window.",
-    },
-  ]);
+  const {
+    conversations,
+    activeId,
+    messages,
+    setMessages,
+    startNewConversation,
+    switchConversation,
+  } = useConversationHistory();
   const [input, setInput] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const closingRef = useRef(false);
 
@@ -87,15 +86,15 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
     <div
       className={
         standalone
-          ? "flex h-screen w-screen items-center justify-center text-white"
-          : "fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
+          ? "flex h-screen w-screen items-center justify-center text-[#5C3A33]"
+          : "fixed inset-0 z-[60] flex items-center justify-center bg-[#5C3A33]/30"
       }
     >
       <div
         className={
           standalone
-            ? "flex h-full w-full flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900/80 backdrop-blur-md"
-            : "flex h-[min(300px,90vh)] w-[min(280px,90vw)] flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900/95 backdrop-blur-md"
+            ? "flex h-full w-full flex-col overflow-hidden rounded-xl border border-[#B98070]/50 bg-[#F0DAD3]/90 backdrop-blur-md"
+            : "flex h-[min(600px,90vh)] w-[min(800px,90vw)] flex-col overflow-hidden rounded-xl border border-[#B98070]/50 bg-[#F0DAD3]/95 backdrop-blur-md"
         }
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -106,9 +105,28 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
               void appWindow.startDragging();
             }
           }}
-          className="flex cursor-grab items-center justify-between border-b border-white/10 px-3 py-2 text-sm active:cursor-grabbing"
+          className="flex cursor-grab items-center justify-between border-b border-[#B98070]/30 bg-[#E8CDC4]/60 px-3 py-2 text-sm active:cursor-grabbing"
         >
-          <span className="font-bold text-[#FF2215]">Angelina</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Toggle sidebar"
+              aria-expanded={sidebarOpen}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={() => setSidebarOpen((open) => !open)}
+              className="rounded px-1.5 py-1 text-[#8C5B4F] transition-colors hover:bg-[#B98070]/20"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <span className="font-bold text-[#8C5B4F]">Angelina</span>
+          </div>
           <button
             type="button"
             aria-label="Close chat"
@@ -118,44 +136,54 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
               handleClose();
             }}
             onClick={handleClose}
-            className="rounded px-2 py-1 text-white transition-colors hover:bg-white/10"
+            className="rounded px-2 py-1 text-[#8C5B4F] transition-colors hover:bg-[#B98070]/20"
           >
             ✕
           </button>
         </header>
 
-        <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm text-neutral-100">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`max-w-[85%] rounded-lg px-3 py-1.5 ${
-                message.author === "user"
-                  ? "ml-auto bg-[#0078d7] text-white"
-                  : "mr-auto bg-white/10 text-neutral-100"
-              }`}
-            >
-              {message.text}
-            </div>
-          ))}
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="flex gap-2 border-t border-white/10 p-2"
-        >
-          <input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="Type a message..."
-            className="min-w-0 flex-1 rounded-md bg-white/10 px-2 py-1.5 text-sm text-white outline-none placeholder:text-neutral-400 focus:bg-white/15"
-          />
-          <button
-            type="submit"
-            className="rounded-md bg-[#0078d7] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#005a9e]"
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div
+            inert={!sidebarOpen}
+            className={`shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out ${
+              sidebarOpen ? "w-56" : "w-0"
+            }`}
           >
-            Send
-          </button>
-        </form>
+            <Sidebar
+              conversations={conversations}
+              activeId={activeId}
+              onNewConversation={() => {
+                startNewConversation();
+                setSidebarOpen(false);
+              }}
+              onSelectConversation={(id) => {
+                switchConversation(id);
+                setSidebarOpen(false);
+              }}
+            />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <MessageBox messages={messages} />
+
+            <form
+              onSubmit={handleSubmit}
+              className="flex gap-2 border-t border-[#B98070]/30 p-2"
+            >
+              <input
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="Type a message..."
+                className="min-w-0 flex-1 rounded-md bg-[#E8CDC4]/70 px-2 py-1.5 text-sm text-[#5C3A33] outline-none placeholder:text-[#A98A7E] focus:bg-[#E8CDC4]"
+              />
+              <button
+                type="submit"
+                className="rounded-md bg-[#B98070] px-3 py-1.5 text-sm font-medium text-[#FFF2EE] transition-colors hover:bg-[#8C5B4F]"
+              >
+                Send
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );

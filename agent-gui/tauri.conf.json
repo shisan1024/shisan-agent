@@ -9,6 +9,7 @@
     "frontendDist": "ui/dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "agent-gui",
