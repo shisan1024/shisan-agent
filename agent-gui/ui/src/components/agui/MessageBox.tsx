@@ -106,13 +106,13 @@ function MessageBox({ messages, className }: MessageBoxProps) {
             <span className="cursor-text">{message.text}</span>
             <button
               type="button"
-              aria-label={copied ? "Copied" : "Copy message"}
+              aria-label={copied ? "已复制" : "复制消息"}
               onClick={() => void handleCopy(message)}
               className={`absolute -top-2 ${
                 isUser ? "-left-2" : "-right-2"
               } rounded border border-[#B98070]/40 bg-[#F0DAD3] px-1.5 text-[10px] leading-4 text-[#8C5B4F] opacity-0 shadow-sm transition-opacity hover:bg-[#E8CDC4] focus-visible:opacity-100 group-hover:opacity-100`}
             >
-              {copied ? "✓ Copied" : "Copy"}
+              {copied ? "✓ 已复制" : "复制"}
             </button>
           </div>
         );

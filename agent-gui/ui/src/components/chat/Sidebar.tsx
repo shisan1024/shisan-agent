@@ -15,7 +15,7 @@ function Sidebar({
 }: SidebarProps) {
   return (
     <aside className="flex h-full w-56 flex-col border-r border-[#B98070]/30 bg-[#F0DAD3]">
-      <div className="p-2">
+      <div className="p-4">
         <button
           type="button"
           onClick={onNewConversation}

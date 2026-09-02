@@ -22,7 +22,7 @@ const DEFAULT_MESSAGES: ChatMessage[] = [
   {
     id: 1,
     author: "assistant",
-    text: "Hello! This is the Angelina chat window.",
+    text: "你好！这里是 Angelina 聊天窗口。",
   },
 ];
 

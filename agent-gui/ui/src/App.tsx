@@ -2,18 +2,17 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 
 import { currentMonitor, getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Image } from "@tauri-apps/api/image";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import ContextMenu from "./components/ContextMenu";
 import iconUrl from "./assets/icon.png";
-const backgrounds = import.meta.glob("./assets/background/*.gif", {
-  eager: true,
-  import: "default",
-}) as Record<string, string>;
-
-const backgroundKeys = Object.keys(backgrounds);
-const INITIAL_KEY = "./assets/background/angelina_ride.gif";
-const INITIAL_URL = backgrounds[INITIAL_KEY] ?? backgroundKeys[0] ?? "";
+import {
+  backgrounds,
+  backgroundKeys,
+  GIF_CHANGED_EVENT,
+  INITIAL_KEY,
+  INITIAL_URL,
+} from "./lib/backgrounds";
 
 function getDayProgress() {
   const now = new Date();
@@ -160,6 +159,8 @@ function App() {
     try {
       const existing = await WebviewWindow.getByLabel("chat");
       const monitor = await currentMonitor();
+      const chatWidth = 1280;
+      const chatHeight = 800;
       let centerPosition: { x: number; y: number } | undefined;
 
       if (monitor) {
@@ -167,8 +168,8 @@ function App() {
         const monitorPosition = monitor.position.toLogical(scale);
         const monitorSize = monitor.size.toLogical(scale);
         centerPosition = {
-          x: Math.round(monitorPosition.x + Math.max(0, (monitorSize.width - 800) / 2)),
-          y: Math.round(monitorPosition.y + Math.max(0, (monitorSize.height - 600) / 2)),
+          x: Math.round(monitorPosition.x + Math.max(0, (monitorSize.width - chatWidth) / 2)),
+          y: Math.round(monitorPosition.y + Math.max(0, (monitorSize.height - chatHeight) / 2)),
         };
       }
 
@@ -185,10 +186,10 @@ function App() {
       }
 
       const chat = new WebviewWindow("chat", {
-        url: "index.html?window=chat",
+        url: `index.html?window=chat&gif=${encodeURIComponent(currentKey)}`,
         title: "Angelina",
-        width: 800,
-        height: 600,
+        width: chatWidth,
+        height: chatHeight,
         resizable: true,
         decorations: false,
         transparent: true,
@@ -239,6 +240,11 @@ function App() {
     const nextKey = candidates[Math.floor(Math.random() * candidates.length)];
     setCurrentKey(nextKey);
     setCurrentImage(backgrounds[nextKey]);
+
+    // Keep the chat window's avatar card in sync with the pet's current gif.
+    void emit(GIF_CHANGED_EVENT, nextKey).catch((error) => {
+      console.error("[main] failed to emit gif-changed", error);
+    });
   };
 
   const handleExit = () => {
@@ -328,7 +334,7 @@ function App() {
 
           <img
             src={currentImage}
-            alt="Angelina animation"
+            alt="Angelina 动画"
             draggable={false}
             className="pointer-events-none absolute h-[68%] w-[68%] rounded-full object-cover"
           />

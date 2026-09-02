@@ -19,15 +19,15 @@ function ContextMenu({
 }: ContextMenuProps) {
   const menuItems = [
     {
-      label: alwaysOnTop ? "Unpin" : "Pin",
+      label: alwaysOnTop ? "取消置顶" : "置顶",
       action: onPin,
     },
     {
-      label: "Next Angelina",
+      label: "下一个 Angelina",
       action: onNext,
     },
     {
-      label: "Exit",
+      label: "退出",
       action: onExit,
     },
   ];
