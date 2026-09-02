@@ -1,8 +1,45 @@
 @import "tailwindcss";
 
+/* Bundled CJK font (optional but recommended on Windows machines that have
+   no CJK system font). Drop NotoSansSC-Regular.ttf into ui/public/fonts/. */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("/fonts/NotoSansSC-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("/fonts/NotoSansSC-VF.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Windows WebView2 may render CJK as tofu/boxes when the default Tailwind
+   font stack is used. Override --font-sans and also set the font directly on
+   the root elements (unlayered) so Chinese UI strings use Microsoft YaHei /
+   SimSun on Windows while macOS keeps -apple-system/PingFang SC. */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Noto Sans SC", "Microsoft YaHei UI",
+    "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC",
+    "Source Han Sans SC", "WenQuanYi Micro Hei", "Microsoft JhengHei UI",
+    "Microsoft JhengHei", "SimSun", "NSimSun", "DengXian", "SimHei", "Arial Unicode MS",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
 html,
 body,
 #root {
+  font-family: -apple-system, BlinkMacSystemFont, "Noto Sans SC", "Microsoft YaHei UI",
+    "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC",
+    "Source Han Sans SC", "WenQuanYi Micro Hei", "Microsoft JhengHei UI",
+    "Microsoft JhengHei", "SimSun", "NSimSun", "DengXian", "SimHei", "Arial Unicode MS",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   height: 100%;
   margin: 0;
   background: transparent;
@@ -10,3 +47,9 @@ body,
   user-select: none;
 }
 
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
