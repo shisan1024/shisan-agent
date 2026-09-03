@@ -97,7 +97,7 @@ function MessageBox({ messages, className }: MessageBoxProps) {
         return (
           <div
             key={message.id}
-            className={`group relative max-w-[85%] rounded-lg px-3 py-1.5 ${
+            className={`group relative w-fit max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-1.5 ${
               isUser
                 ? "ml-auto bg-[#B98070] text-[#FFF2EE]"
                 : "mr-auto bg-[#E8CDC4] text-[#5C3A33]"
