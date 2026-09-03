@@ -54,7 +54,7 @@ impl Callable for Agent {
                                             name: None
                                         })).await;
         let tools = vec![
-            tool::SystemAgentTool::get_time()
+            tool::SystemAgentTool::get_time(),
         ];
         let req = CreateChatCompletionRequestArgs::default()
                                         .model(model.clone())
