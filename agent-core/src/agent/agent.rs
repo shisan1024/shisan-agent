@@ -6,7 +6,7 @@ use async_openai::{Client};
 use futures_util::StreamExt;
 
 
-use crate::agent::{Callable, tool};
+use crate::agent::Callable;
 use crate::provider::Provider;
 use super::session::Session;
 
@@ -14,6 +14,7 @@ pub struct Agent {
     client: Client<OpenAIConfig>,
     model: String,
     session: Session,
+
 }
 
 impl Agent {
@@ -71,8 +72,9 @@ impl Agent {
                         }
                     }
                 }
-            println!("current tool_call: {:?}", tool_call_map);
-            break
+                for (tool_call, params) in tool_call_map.iter() {
+                    
+                }
             }
         }
     }

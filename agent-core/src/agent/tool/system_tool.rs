@@ -2,9 +2,11 @@
 use async_openai::types::chat::ChatCompletionTools;
 use serde_json::json;
 
+
 use super::AgentTool;
 
 pub struct SystemAgentTool {
+
 }
 
 impl SystemAgentTool {

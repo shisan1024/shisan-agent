@@ -1,16 +1,20 @@
 use async_openai::types::chat::{ChatCompletionTool, ChatCompletionTools, FunctionObject};
-use serde_json::{Value};
+use async_trait::async_trait;
+use serde_json::{Value, map::Values};
 
 pub mod system_tool;
-
 pub use system_tool::SystemAgentTool;
-
 
 pub struct AgentTool {
     name: String,
     description: Option<String>,
     parameters: Option<Value>,
     strict: Option<bool>,
+}
+
+#[async_trait]
+pub trait RunnableTool {
+    async fn run(&self, value: Values);
 }
 
 impl AgentTool {
