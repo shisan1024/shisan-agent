@@ -1,7 +1,9 @@
+// 私有模块，外部只见 crate::agent::Agent，无路径口吃
+#[allow(clippy::module_inception)]
 mod agent;
-mod call;
+mod event;
 mod session;
-mod tool;
 
-pub use agent::Agent;
-pub use call::Callable;
+pub use agent::{Agent, AgentBuilder};
+pub use event::AgentEvent;
+pub use session::Session;

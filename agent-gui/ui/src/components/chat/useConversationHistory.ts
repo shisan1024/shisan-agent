@@ -18,13 +18,8 @@ const INDEX_KEY = "agui.sessions.index.v1";
 const SESSION_KEY_PREFIX = "agui.session.v1.";
 const MAX_SESSIONS = 50;
 
-const DEFAULT_MESSAGES: ChatMessage[] = [
-  {
-    id: 1,
-    author: "assistant",
-    text: "你好！这里是 Angelina 聊天窗口。",
-  },
-];
+// 新会话不再预置欢迎语：人设与开场氛围由后端 system prompt 决定
+const DEFAULT_MESSAGES: ChatMessage[] = [];
 
 function readIndex(): ConversationMeta[] | null {
   try {
@@ -52,7 +47,16 @@ function readMessages(id: string): ChatMessage[] | null {
     if (!Array.isArray(parsed)) {
       return null;
     }
-    return parsed as ChatMessage[];
+    // 持久化的 streaming 状态说明流已随上次进程死亡：判定为中断，避免重启后发送按钮被永久锁死。
+    return (parsed as ChatMessage[]).map((message) =>
+      message.status === "streaming"
+        ? {
+            ...message,
+            status: "error" as const,
+            text: message.text || "[上次回复中断]",
+          }
+        : message,
+    );
   } catch {
     return null;
   }
@@ -139,6 +143,10 @@ export function useConversationHistory(): {
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
   startNewConversation: () => void;
   switchConversation: (id: string) => void;
+  updateConversation: (
+    id: string,
+    updater: (messages: ChatMessage[]) => ChatMessage[],
+  ) => void;
 } {
   const [state, setState] = useState<HistoryState>(initState);
 
@@ -231,6 +239,38 @@ export function useConversationHistory(): {
     });
   }, []);
 
+  const updateConversation = useCallback(
+    (id: string, updater: (messages: ChatMessage[]) => ChatMessage[]) => {
+      setState((current) => {
+        if (!current.index.some((meta) => meta.id === id)) {
+          // 会话已被逐出（超过 MAX_SESSIONS）：丢弃迟到的流式更新。
+          return current;
+        }
+
+        const baseMessages =
+          id === current.activeId ? current.messages : readMessages(id) ?? [];
+        const nextMessages = updater(baseMessages);
+        const nextIndex = current.index.map((meta) =>
+          meta.id === id
+            ? {
+                ...meta,
+                title: computeTitle(nextMessages),
+                updatedAt: Date.now(),
+              }
+            : meta,
+        );
+        writeMessages(id, nextMessages);
+        writeIndex(nextIndex);
+
+        if (id === current.activeId) {
+          return { ...current, index: nextIndex, messages: nextMessages };
+        }
+        return { ...current, index: nextIndex };
+      });
+    },
+    [],
+  );
+
   const conversations = useMemo(
     () => [...state.index].sort((a, b) => b.updatedAt - a.updatedAt),
     [state.index],
@@ -243,5 +283,6 @@ export function useConversationHistory(): {
     setMessages,
     startNewConversation,
     switchConversation,
+    updateConversation,
   };
 }

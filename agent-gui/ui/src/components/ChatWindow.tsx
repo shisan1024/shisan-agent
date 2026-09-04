@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Image } from "@tauri-apps/api/image";
 import MessageBox from "./agui/MessageBox";
 import Sidebar from "./chat/Sidebar";
+import { useAgentChat } from "./chat/useAgentChat";
 import { useConversationHistory } from "./chat/useConversationHistory";
 import {
   backgrounds,
@@ -124,10 +125,12 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
     conversations,
     activeId,
     messages,
-    setMessages,
     startNewConversation,
     switchConversation,
+    updateConversation,
   } = useConversationHistory();
+  const { send, cancel } = useAgentChat(activeId, updateConversation);
+  const isStreaming = messages.some((message) => message.status === "streaming");
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [gifKey, setGifKey] = useState(initialGifKey);
@@ -179,18 +182,11 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
     event.preventDefault();
 
     const text = input.trim();
-    if (!text) {
+    if (!text || isStreaming) {
       return;
     }
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        author: "user",
-        text,
-      },
-    ]);
+    send(text);
     setInput("");
   };
 
@@ -340,12 +336,26 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
                 placeholder="输入消息…"
                 className="min-w-0 flex-1 rounded-lg bg-[#EAD1C2]/70 px-3 py-2 text-sm text-[#5F3D30] outline-none placeholder:text-[#AD8D7A] transition-colors focus:bg-[#EAD1C2]"
               />
-              <button
-                type="submit"
-                className="shrink-0 rounded-lg bg-[#C08469] px-4 text-sm font-medium text-[#FFF4EE] transition-colors hover:bg-[#935E48]"
-              >
-                发送
-              </button>
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={cancel}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#935E48]/40 bg-[#FFF4EE] px-4 text-sm font-medium text-[#935E48] transition-colors hover:bg-[#F1DDD2]"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-2 w-2 rounded-[3px] bg-[#935E48]"
+                  />
+                  停止
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="shrink-0 rounded-lg bg-[#C08469] px-4 text-sm font-medium text-[#FFF4EE] transition-colors hover:bg-[#935E48]"
+                >
+                  发送
+                </button>
+              )}
             </form>
           </div>
 

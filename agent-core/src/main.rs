@@ -1,31 +1,15 @@
-use std::error::Error;
-
-
-use agent_core::{agent::Agent, provider::Provider};
-
+use agent_core::tool::builtin::GetTime;
+use agent_core::{Agent, AgentError, Provider};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    // create client, reads OPENAI_API_KEY environment variable for API key.
-    let mut agent = Agent::new(Provider::OpenRouter, "inclusionai/ling-3.0-flash-fin:free".to_string());
+async fn main() -> Result<(), AgentError> {
+    let mut agent = Agent::builder(Provider::OpenRouter, "z-ai/glm-5.3-flash")
+        .tool(GetTime)
+        .build()?;
 
-    // let mut result = agent.call_stream("what time is it now?").await?;
-    
-    
-    // while let Some(response) = result.next().await {
-    //     match response {
-    //         Ok(ccr) => {
-    //             println!("{:?}", ccr);
-    //             ccr.choices.iter().for_each(|c| {
-    //                 if let Some(ref content) = c.delta.content {
-    //                     println!("{}", content);
-    //                 }
-    //             })
-    //         },
-    //         Err(e) => eprintln!("{e:?}"),
-    //     }
-    // }
-    agent.run("hello, use all the tools you can use!").await;
+    let answer = agent.run("hello, what time is it now?").await?;
 
+    println!("{answer}");
+    println!("usage: {:?}", agent.session().usage());
     Ok(())
 }

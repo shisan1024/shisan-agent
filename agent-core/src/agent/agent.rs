@@ -1,130 +1,172 @@
-use std::collections::HashMap;
+use futures_util::{Stream, StreamExt};
+use genai::Client;
+use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent, ToolCall, ToolResponse, Usage};
 
-use async_openai::config::OpenAIConfig;
-use async_openai::types::chat::{ChatCompletionTools, FinishReason};
-use async_openai::{Client};
-use futures_util::StreamExt;
-
-
-use crate::agent::Callable;
-use crate::agent::tool::{AgentTool};
+use crate::error::AgentError;
 use crate::provider::Provider;
+use crate::tool::{AgentTool, ToolSet};
+
+use super::event::AgentEvent;
 use super::session::Session;
 
+const DEFAULT_MAX_TURNS: usize = 8;
+
 pub struct Agent {
-    client: Client<OpenAIConfig>,
+    client: Client,
     model: String,
     session: Session,
-    tools: HashMap<String, AgentTool>
+    tools: ToolSet,
+    max_turns: usize,
+}
+
+pub struct AgentBuilder {
+    provider: Provider,
+    model: String,
+    system: Option<String>,
+    max_turns: usize,
+    tools: ToolSet,
 }
 
 impl Agent {
-
-    pub async fn run(&mut self, message: &str) {
-        loop {
-            // key: tool_call_id, value: 累加后的 arguments 字符串
-            let mut tool_call_map: HashMap<String, String> = HashMap::new();
-            let mut cur_tool_name = String::new();
-            if let Ok(mut stream) = self.call_stream(message).await {
-                while let Some(Ok(chunk)) = stream.next().await {
-                    if let Some(tool_calls) = &chunk.choices[0].delta.tool_calls {
-                        println!("{:?}", tool_calls);
-                        for tool_call in tool_calls {
-                            if let Some(func_stream) = &tool_call.function {
-                                if let Some(tool_name) = &func_stream.name {
-                                    cur_tool_name = tool_name.clone();
-                                } else {
-                                    let params = func_stream.arguments.as_deref().unwrap_or("");
-                                    tool_call_map.entry(cur_tool_name.clone())
-                                                .and_modify(|cur_param| cur_param.push_str(params))
-                                                .or_insert(String::from(params));
-                                }
-                            }
-                        }
-                        if let Some(stop_reason) = chunk.choices[0].finish_reason {
-                            // record current session.
-                            match stop_reason {
-                                FinishReason::Stop => {
-                                    println!("stop");
-                                    break
-                                }
-                                FinishReason::Length => {
-                                    println!("length");
-                                    break
-                                }
-                                FinishReason::ContentFilter => {
-                                    println!("content filter");
-                                    break
-                                }
-                                FinishReason::ToolCalls => {
-                                    println!("tool calls");
-                                    break
-                                }
-                                FinishReason::FunctionCall => {
-                                    println!("function call");
-                                    break
-                                }
-                            }
-                        }
-                        if let Some(content) = &chunk.choices[0].delta.content && content != "" {
-                            // print!("{},", content);
-                        }
-                    }
-                }
-                if tool_call_map.is_empty() {
-                    break;
-                }
-                for (tool_call, params) in tool_call_map.iter() {
-                    if let Some(agent_tool) = self.tool(tool_call.clone()) &&
-                        let Ok(param_json) = serde_json::from_str(params) {
-                        let tool_message = agent_tool.get_fn().run(param_json).await;
-                        println!("{}", tool_message);
-                    }
-                }
-                tool_call_map.clear();
-            }
+    pub fn builder(provider: Provider, model: impl Into<String>) -> AgentBuilder {
+        AgentBuilder {
+            provider,
+            model: model.into(),
+            system: None,
+            max_turns: DEFAULT_MAX_TURNS,
+            tools: ToolSet::default(),
         }
     }
 
-    pub fn new(provider: Provider, model: String) -> Agent {
-        Agent {
-            client: Agent::client(provider).unwrap_or_else(|x| {
-                panic!("Fail to create a agent client: {}", x);
-            }),
-            model,
-            session: Session::default(),
-            tools: HashMap::new()
-        }
+    pub fn model(&self) -> &str {
+        &self.model
     }
 
-    pub fn get_client<'a>(&'a self) -> &'a Client<OpenAIConfig> {
-        &self.client
-    }
-
-    pub fn get_model(&self) -> String {
-        self.model.clone()
-    }
-
-    pub fn get_session<'a>(&'a self) -> &'a Session {
+    pub fn session(&self) -> &Session {
         &self.session
     }
 
-    pub fn register_tool(&mut self, tool: AgentTool) {
-        self.tools.insert(tool.tool_name(), tool);
+    pub async fn run(&mut self, prompt: &str) -> Result<String, AgentError> {
+        let mut stream = std::pin::pin!(self.run_stream(prompt));
+        let mut answer = String::new();
+        while let Some(event) = stream.next().await {
+            if let AgentEvent::Done { text } = event? {
+                answer = text;
+            }
+        }
+        Ok(answer)
     }
 
-    pub fn tools(&self) -> Vec<ChatCompletionTools> {
-        self.tools.values().map(|tool| tool.as_tool()).collect()
+    pub fn run_stream(
+        &mut self,
+        prompt: &str,
+    ) -> impl Stream<Item = Result<AgentEvent, AgentError>> + '_ {
+        let prompt = prompt.to_string();
+        async_stream::try_stream! {
+            self.session.push(ChatMessage::user(prompt));
+            let mut finished = false;
+
+            for _ in 0..self.max_turns {
+                // ChatRequest 需要所有权，会话仍是唯一事实源，这里做一次边界拷贝
+                let mut request = ChatRequest::new(self.session.messages().to_vec());
+                if !self.tools.is_empty() {
+                    request = request.with_tools(self.tools.definitions());
+                }
+
+                let response = self.client.exec_chat_stream(&self.model, request, None).await?;
+                let mut stream = response.stream;
+
+                let mut text = String::new();
+                let mut tool_calls: Vec<ToolCall> = Vec::new();
+                let mut usage = Usage::default();
+
+                while let Some(event) = stream.next().await {
+                    match event? {
+                        ChatStreamEvent::Chunk(chunk) => {
+                            text.push_str(&chunk.content);
+                            yield AgentEvent::TextDelta { text: chunk.content };
+                        }
+                        ChatStreamEvent::ReasoningChunk(chunk) => {
+                            yield AgentEvent::ReasoningDelta { text: chunk.content };
+                        }
+                        ChatStreamEvent::End(end) => {
+                            if let Some(captured) = end.captured_tool_calls() {
+                                tool_calls = captured.into_iter().cloned().collect();
+                            }
+                            if let Some(captured) = end.captured_usage {
+                                usage = captured;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                self.session.record_usage(&usage);
+
+                if tool_calls.is_empty() {
+                    self.session.push(ChatMessage::assistant(text.clone()));
+                    yield AgentEvent::Done { text };
+                    finished = true;
+                    break;
+                }
+
+                self.session.push(ChatMessage::from(tool_calls.clone()));
+                for call in tool_calls {
+                    let ToolCall {
+                        call_id,
+                        fn_name,
+                        fn_arguments,
+                        ..
+                    } = call;
+                    yield AgentEvent::ToolStarted {
+                        id: call_id.clone(),
+                        name: fn_name.clone(),
+                    };
+                    let output = self.tools.dispatch(&fn_name, fn_arguments).await;
+                    yield AgentEvent::ToolFinished {
+                        id: call_id.clone(),
+                        name: fn_name,
+                        output: output.clone(),
+                    };
+                    self.session.push(ChatMessage::from(ToolResponse::new(call_id, output)));
+                }
+            }
+
+            if !finished {
+                Err(AgentError::MaxTurnsExceeded(self.max_turns))?;
+            }
+        }
+    }
+}
+
+impl AgentBuilder {
+    pub fn system(mut self, system: impl Into<String>) -> Self {
+        self.system = Some(system.into());
+        self
     }
 
-    pub fn tool(&self, tool_name: String) -> Option<&AgentTool> {
-        self.tools.get(&tool_name)
+    pub fn max_turns(mut self, max_turns: usize) -> Self {
+        self.max_turns = max_turns;
+        self
     }
 
-    fn client(provider: Provider) -> Result<Client<OpenAIConfig>, Box<dyn std::error::Error>> {
-        let config = OpenAIConfig::new();
-        Ok(Client::with_config(config.with_api_base(provider.endpoint())
-            .with_api_key(provider.api_key_from_env())
-            .with_project_id("shisan-agent")))
+    pub fn tool<T: AgentTool>(mut self, tool: T) -> Self {
+        self.tools.register(tool);
+        self
+    }
+
+    pub fn build(self) -> Result<Agent, AgentError> {
+        let client = self.provider.build_client()?;
+        let mut session = Session::default();
+        if let Some(system) = self.system {
+            session.push(ChatMessage::system(system));
+        }
+        Ok(Agent {
+            client,
+            model: self.model,
+            session,
+            tools: self.tools,
+            max_turns: self.max_turns,
+        })
     }
 }
