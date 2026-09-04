@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
 use async_openai::config::OpenAIConfig;
-use async_openai::types::chat::FinishReason;
+use async_openai::types::chat::{ChatCompletionTools, FinishReason};
 use async_openai::{Client};
 use futures_util::StreamExt;
 
 
 use crate::agent::Callable;
+use crate::agent::tool::{AgentTool};
 use crate::provider::Provider;
 use super::session::Session;
 
@@ -14,20 +15,18 @@ pub struct Agent {
     client: Client<OpenAIConfig>,
     model: String,
     session: Session,
-
+    tools: HashMap<String, AgentTool>
 }
 
 impl Agent {
 
-    pub async fn run(&self, message: &str) {
+    pub async fn run(&mut self, message: &str) {
         loop {
             // key: tool_call_id, value: 累加后的 arguments 字符串
             let mut tool_call_map: HashMap<String, String> = HashMap::new();
             let mut cur_tool_name = String::new();
             if let Ok(mut stream) = self.call_stream(message).await {
                 while let Some(Ok(chunk)) = stream.next().await {
-                    
-                    
                     if let Some(tool_calls) = &chunk.choices[0].delta.tool_calls {
                         println!("{:?}", tool_calls);
                         for tool_call in tool_calls {
@@ -72,9 +71,17 @@ impl Agent {
                         }
                     }
                 }
-                for (tool_call, params) in tool_call_map.iter() {
-                    
+                if tool_call_map.is_empty() {
+                    break;
                 }
+                for (tool_call, params) in tool_call_map.iter() {
+                    if let Some(agent_tool) = self.tool(tool_call.clone()) &&
+                        let Ok(param_json) = serde_json::from_str(params) {
+                        let tool_message = agent_tool.get_fn().run(param_json).await;
+                        println!("{}", tool_message);
+                    }
+                }
+                tool_call_map.clear();
             }
         }
     }
@@ -85,7 +92,8 @@ impl Agent {
                 panic!("Fail to create a agent client: {}", x);
             }),
             model,
-            session: Session::default()
+            session: Session::default(),
+            tools: HashMap::new()
         }
     }
 
@@ -99,6 +107,18 @@ impl Agent {
 
     pub fn get_session<'a>(&'a self) -> &'a Session {
         &self.session
+    }
+
+    pub fn register_tool(&mut self, tool: AgentTool) {
+        self.tools.insert(tool.tool_name(), tool);
+    }
+
+    pub fn tools(&self) -> Vec<ChatCompletionTools> {
+        self.tools.values().map(|tool| tool.as_tool()).collect()
+    }
+
+    pub fn tool(&self, tool_name: String) -> Option<&AgentTool> {
+        self.tools.get(&tool_name)
     }
 
     fn client(provider: Provider) -> Result<Client<OpenAIConfig>, Box<dyn std::error::Error>> {

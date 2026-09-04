@@ -7,11 +7,11 @@ use crate::agent::tool;
 use super::Agent;
 
 #[async_trait]
-pub trait Callable {
+pub trait Callable: Send + 'static {
 
-    async fn call(self, message: &str) -> Result<CreateChatCompletionResponse, OpenAIError>;
+    async fn call(&mut self, message: &str) -> Result<CreateChatCompletionResponse, OpenAIError>;
 
-    async fn call_stream(&self, message: &str) -> Result<ChatCompletionResponseStream, OpenAIError>;
+    async fn call_stream(&mut self, message: &str) -> Result<ChatCompletionResponseStream, OpenAIError>;
 
 }
 
@@ -19,7 +19,7 @@ pub trait Callable {
 #[async_trait]
 impl Callable for Agent {
 
-    async fn call(self, message: &str) -> Result<CreateChatCompletionResponse, OpenAIError> {
+    async fn call(&mut self, message: &str) -> Result<CreateChatCompletionResponse, OpenAIError> {
         let client: &Client<OpenAIConfig> = self.get_client();
         let model = self.get_model();
         let session = self.get_session();
@@ -29,7 +29,7 @@ impl Callable for Agent {
                                             name: None
                                         })).await;
         let tools = vec![
-            tool::SystemAgentTool::get_time()
+            tool::SystemAgentTool::get_time().as_tool()
         ];
         let req = CreateChatCompletionRequestArgs::default()
                                         .model(model.clone())
@@ -43,26 +43,23 @@ impl Callable for Agent {
         Ok(client.chat().create(req).await?)
     }
 
-    async fn call_stream(&self, message: &str) -> Result<ChatCompletionResponseStream, OpenAIError> {
-        
+    async fn call_stream(&mut self, message: &str) -> Result<ChatCompletionResponseStream, OpenAIError> {
+        self.register_tool(tool::SystemAgentTool::get_time());
         let client: &Client<OpenAIConfig> = self.get_client();
         let model = self.get_model();
         let session = self.get_session();
-
         session.add_message(ChatCompletionRequestMessage::User(ChatCompletionRequestUserMessage {
                                             content: ChatCompletionRequestUserMessageContent::Text(message.to_string()),
                                             name: None
                                         })).await;
-        let tools = vec![
-            tool::SystemAgentTool::get_time(),
-        ];
+        
         let req = CreateChatCompletionRequestArgs::default()
                                         .model(model.clone())
                                         .n(1)
                                         .messages(session.get_messages().await)
                                         .stream(true)
                                         .max_tokens(1024_u32)
-                                        .tools(tools)
+                                        .tools(self.tools())
                                         .build()?;
         client.chat().create_stream(req).await
     }

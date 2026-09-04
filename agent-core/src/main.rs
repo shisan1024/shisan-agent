@@ -8,7 +8,7 @@ use futures_util::StreamExt;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // create client, reads OPENAI_API_KEY environment variable for API key.
-    let agent = Agent::new(Provider::OpenRouter, "inclusionai/ling-3.0-flash-fin:free".to_string());
+    let mut agent = Agent::new(Provider::OpenRouter, "inclusionai/ling-3.0-flash-fin:free".to_string());
 
     // let mut result = agent.call_stream("what time is it now?").await?;
     
