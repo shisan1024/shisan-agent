@@ -1,10 +1,9 @@
 
-use async_openai::types::chat::ChatCompletionTools;
 use chrono::{DateTime, Utc};
-use serde_json::{Value, json, value};
+use serde_json::Value;
 
 
-use crate::agent::tool::{RunnableTool, tool_fn, tool_param::Field};
+use crate::agent::tool::{tool_fn, tool_param::Field};
 
 use super::AgentTool;
 

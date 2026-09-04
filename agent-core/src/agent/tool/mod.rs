@@ -1,6 +1,5 @@
 use async_openai::types::chat::{ChatCompletionTool, ChatCompletionTools, FunctionObject};
-use async_trait::async_trait;
-use serde_json::{Value, map::Values};
+use serde_json::Value;
 
 pub mod system_tool;
 pub mod tool_runnable;

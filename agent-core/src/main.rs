@@ -1,8 +1,7 @@
 use std::error::Error;
 
 
-use agent_core::{agent::{Agent, Callable}, provider::Provider};
-use futures_util::StreamExt;
+use agent_core::{agent::Agent, provider::Provider};
 
 
 #[tokio::main]
