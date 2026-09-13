@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import angelinaIcon from "../../assets/icon.png";
-import type { ChatMessage } from "../chat/types";
+import ComponentRenderer from "./registry";
+import type { ChatMessage, ComponentAction } from "../chat/types";
 
 export type { ChatMessage } from "../chat/types";
 
@@ -9,6 +10,10 @@ export type MessageBoxProps = {
   className?: string;
   // run 已发起但还没有任何 assistant entry 时显示输入中指示
   pending?: boolean;
+  // 整轮 run 未结束（模型仍在输出）时为 true，用于禁用卡片上的交互按钮
+  busy?: boolean;
+  // 组件卡片上的确认/取消：由上层负责落定状态并决定是否回传模型
+  onComponentAction?: (entry: ChatMessage, action: ComponentAction) => void;
 };
 
 const COPY_FEEDBACK_MS = 1500;
@@ -57,6 +62,30 @@ function ThinkingDots({ className }: { className?: string }) {
   );
 }
 
+// 思考气泡图标：用内联 SVG 而不是 💭。
+// 💭(U+1F4AD) 在补充平面，依赖彩色 emoji 字体，Windows WebView2 上会渲染成乱码；
+// ✓ ⚙ 这类 BMP 符号由 Segoe UI Symbol 覆盖，所以只有 emoji 会出问题。
+// 图标一律走 SVG + currentColor，与工具箱、窗口按钮的既有做法保持一致。
+function ThoughtIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      className={`shrink-0 ${className ?? ""}`}
+    >
+      <path
+        d="M8 3c2.9 0 5.25 1.9 5.25 4.25S10.9 11.5 8 11.5c-.62 0-1.21-.09-1.76-.25L3.5 12.6l.73-2.08A4.06 4.06 0 0 1 2.75 7.25C2.75 4.9 5.1 3 8 3Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function ReasoningFold({ entry }: { entry: ChatMessage }) {
   const streaming = entry.status === "streaming";
   return (
@@ -71,8 +100,9 @@ function ReasoningFold({ entry }: { entry: ChatMessage }) {
         >
           ▶
         </span>
-        <span className="font-semibold tracking-wide">
-          💭 {streaming ? "思考中" : "思考过程"}
+        <span className="flex items-center gap-1 font-semibold tracking-wide">
+          <ThoughtIcon />
+          {streaming ? "思考中" : "思考过程"}
         </span>
         {streaming && <ThinkingDots className="text-[#C08469]" />}
       </summary>
@@ -131,7 +161,13 @@ function buildGroups(messages: ChatMessage[]): Group[] {
   return groups;
 }
 
-function MessageBox({ messages, className, pending = false }: MessageBoxProps) {
+function MessageBox({
+  messages,
+  className,
+  pending = false,
+  busy = false,
+  onComponentAction,
+}: MessageBoxProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const copyResetTimer = useRef<number | undefined>(undefined);
@@ -270,6 +306,18 @@ function MessageBox({ messages, className, pending = false }: MessageBoxProps) {
                 }
                 if (entry.kind === "reasoning") {
                   return <ReasoningFold key={entry.id} entry={entry} />;
+                }
+                if (entry.kind === "component" && entry.component) {
+                  // 组件卡片由 registry 按 type 分发；确认/取消回到 ChatWindow 处理
+                  return (
+                    <ComponentRenderer
+                      key={entry.id}
+                      spec={entry.component}
+                      state={entry.componentState ?? "pending"}
+                      busy={busy}
+                      onResolve={(action) => onComponentAction?.(entry, action)}
+                    />
+                  );
                 }
                 return <ToolChip key={entry.id} entry={entry} />;
               })}

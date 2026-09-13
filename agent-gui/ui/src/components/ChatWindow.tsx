@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { Image } from "@tauri-apps/api/image";
@@ -6,6 +13,7 @@ import MessageBox from "./agui/MessageBox";
 import Sidebar from "./chat/Sidebar";
 import { useAgentChat } from "./chat/useAgentChat";
 import { useConversationHistory } from "./chat/useConversationHistory";
+import type { ChatMessage, ComponentAction } from "./chat/types";
 import {
   backgrounds,
   GIF_CHANGED_EVENT,
@@ -79,6 +87,9 @@ const TOOLBOX_ITEMS: ToolboxItem[] = [
 // Warm ladder derived from the base palette, used for the rank-style badges.
 const BADGE_COLORS = ["#935E48", "#AA684C", "#C08469", "#D09E78"];
 
+// 卡片确认后回传模型的话术：内容模型在上一次工具调用里已经持有，不必重复一遍
+const COMPONENT_CONFIRM_PROMPT = "确认保存这条灵感";
+
 function PillHeader({ children }: { children: string }) {
   return (
     <div className="rounded-full bg-gradient-to-r from-[#C08469] to-[#935E48] px-4 py-1.5 text-center text-sm font-bold tracking-widest text-[#FFF4EE] shadow-sm">
@@ -136,6 +147,11 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
     (awaitingRun && messages[messages.length - 1]?.kind === "user");
   const showTypingIndicator =
     isStreaming && messages[messages.length - 1]?.kind === "user";
+  // 卡片按钮的禁用条件比 isStreaming 更宽：卡片出现后模型还要输出收尾语，
+  // 那段空窗里 isStreaming 可能为 false，但同一会话不能并发起第二轮 run
+  // （Rust 侧同一 conversation 共用一个 Agent 锁与取消令牌）。
+  const runBusy =
+    awaitingRun || messages.some((message) => message.status === "streaming");
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [gifKey, setGifKey] = useState(initialGifKey);
@@ -194,6 +210,34 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
     send(text);
     setInput("");
   };
+
+  const handleComponentAction = useCallback(
+    (entry: ChatMessage, action: ComponentAction) => {
+      // 按钮本身在 runBusy 时是 disabled 的，这里再兜一层，避免空窗期的并发发送
+      if (runBusy) {
+        return;
+      }
+
+      // 先落定状态并随历史持久化，卡片随即变成只读
+      updateConversation(activeId, (current) =>
+        current.map((message) =>
+          message.id === entry.id
+            ? {
+                ...message,
+                componentState: action === "confirm" ? "confirmed" : "cancelled",
+              }
+            : message,
+        ),
+      );
+
+      if (action === "confirm") {
+        // 确认后交回模型继续后续流程（真正的落库由后续工具完成）
+        send(COMPONENT_CONFIRM_PROMPT);
+      }
+      // 取消不回传模型：用户的意思是"算了"，不值得再花一轮
+    },
+    [activeId, runBusy, send, updateConversation],
+  );
 
   const controlButtonClass =
     "flex h-6 w-6 items-center justify-center rounded text-[#935E48] transition-colors hover:bg-[#C08469]/20";
@@ -318,7 +362,12 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
                   }}
                 />
               </div>
-              <MessageBox messages={messages} pending={showTypingIndicator} />
+              <MessageBox
+                messages={messages}
+                pending={showTypingIndicator}
+                busy={runBusy}
+                onComponentAction={handleComponentAction}
+              />
             </div>
 
             {/* Bottom chat bar: highlighted chip + input + send (left column only) */}

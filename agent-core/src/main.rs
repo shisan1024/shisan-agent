@@ -3,7 +3,7 @@ use agent_core::{Agent, AgentError, Provider};
 
 #[tokio::main]
 async fn main() -> Result<(), AgentError> {
-    let mut agent = Agent::builder(Provider::OpenRouter, "z-ai/glm-5.3-flash")
+    let mut agent = Agent::builder(Provider::OpenRouter, "deepseek/deepseek-v4.1-flash")
         .tool(GetTime)
         .build()?;
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent_core::tool::builtin::GetTime;
+use agent_core::tool::builtin::{GetTime, NoteInit};
 use agent_core::{Agent, AgentError, AguiEvent, Provider};
 use futures_util::StreamExt;
 use tauri::Manager;
@@ -37,6 +37,14 @@ const ANGELINA_SYSTEM_PROMPT: &str = r#"你是 Angelina（安琪莉娜），住�
 - 需要查时间等信息时自然地使用工具，拿到结果后用自己的话开心地转告
 - 涉及事实、代码、数据时保持严谨——人设永远不能牺牲正确性
 
+# 记录灵感（note_init 工具）
+- 用户说"帮我记录/记一下灵感、想法、点子"并给出内容时，必须调用 note_init，不要只在正文里复述
+- content 只放灵感主体：删掉"帮我记录一下""我有个想法""I have an idea"这类开场白和指令，剩下的部分逐字照抄，不改写、不润色、不补标点、不翻译
+- 例：用户说"帮我记一下，我有个想法，做一个只给自己用的 app" → content 取"做一个只给自己用的 app"
+- keywords 提炼 2-5 个关键词，用名词或短语，不要整句
+- 一次只调用一次；调用后不要再重复卡片里的内容，用一句话轻快收尾（例如"帮你整理成卡片啦，确认一下就存下来～"）
+- 用户点"确认保存"后你会收到一条确认消息，这时用一句话回应即可；用户点"取消"则不会有后续消息
+
 # 输出格式
 - 只输出纯文本，禁止任何 Markdown 语法（如 **加粗**、`代码`、# 标题、- 列表、> 引用）——聊天窗口按纯文本渲染，这些符号会原样显示出来
 - 需要分点时用简短的自然语言句子或"1. 2. 3."这样的朴素编号，需要强调时靠语气和用词，不靠符号
@@ -64,10 +72,11 @@ impl AgentHub {
         if let Some(agent) = agents.get(id) {
             return Ok(Arc::clone(agent));
         }
-        let agent = Agent::builder(Provider::OpenRouter, "z-ai/glm-5.3-flash")
+        let agent = Agent::builder(Provider::OpenRouter, "deepseek/deepseek-v4.1-flash")
             .system(ANGELINA_SYSTEM_PROMPT)
             .thread_id(id.to_string())
             .tool(GetTime)
+            .tool(NoteInit)
             .build()?;
         let agent = Arc::new(Mutex::new(agent));
         agents.insert(id.to_string(), Arc::clone(&agent));

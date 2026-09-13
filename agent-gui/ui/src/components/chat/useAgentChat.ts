@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { parseComponentSpec } from "../agui/registry";
 import type { AguiEvent, ChatMessage } from "./types";
 
 type UpdateConversation = (
@@ -23,9 +24,20 @@ function errorNote(code: string, message: string): string {
   return `[错误] ${message}`;
 }
 
-function findLastTextIndex(messages: ChatMessage[]): number {
+// 只在本轮 run 自己产出的文本里找错误落点。
+// 按整段历史回退正是「错误贴到上一条消息上」的根因：请求在产生任何文本前就失败
+// （网络错误、超时、RUN_STARTED 后立刻中断）时，会命中上一轮的回复。
+// runId 为空说明连 RUN_STARTED 都没到过，本轮不可能有任何 entry，直接新建。
+function currentRunTextIndex(
+  messages: ChatMessage[],
+  runId: string | null,
+): number {
+  if (runId === null) {
+    return -1;
+  }
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].kind === "text") {
+    const entry = messages[i];
+    if (entry.kind === "text" && entry.runId === runId) {
       return i;
     }
   }
@@ -81,7 +93,7 @@ export function useAgentChat(
               : entry,
           );
           const note = errorNote(code, message);
-          const lastTextIndex = findLastTextIndex(next);
+          const lastTextIndex = currentRunTextIndex(next, runId);
           if (lastTextIndex >= 0) {
             const target = next[lastTextIndex];
             const text = target.text ? `${target.text}\n${note}` : note;
@@ -172,17 +184,32 @@ export function useAgentChat(
             }));
             break;
           case "TOOL_CALL_END":
-            patchEntry(event.toolCallId, (entry) => ({
-              ...entry,
-              status: "done",
-            }));
+            // 组件类工具在这里物化：Rust 侧把完整 args 作为单个 delta 发出，
+            // 到 END 时 JSON 一定完整。物化后不再显示工具气泡，改由 registry 渲染卡片。
+            patchEntry(event.toolCallId, (entry) => {
+              if (entry.kind !== "tool") {
+                return entry;
+              }
+              const spec = parseComponentSpec(entry.name ?? "", entry.args ?? "");
+              if (!spec) {
+                return { ...entry, status: "done" };
+              }
+              return {
+                ...entry,
+                kind: "component",
+                component: spec,
+                componentState: "pending",
+                status: "done",
+              };
+            });
             break;
           case "TOOL_CALL_RESULT":
-            patchEntry(event.toolCallId, (entry) => ({
-              ...entry,
-              status: "done",
-              output: event.content,
-            }));
+            // 已物化成卡片的 entry 不再补工具输出，避免把 output 挂到组件上
+            patchEntry(event.toolCallId, (entry) =>
+              entry.kind === "tool"
+                ? { ...entry, status: "done", output: event.content }
+                : entry,
+            );
             break;
           case "RUN_FINISHED":
             // 兜底扫尾：该 run 内仍 streaming 的 entry 全部定稿
