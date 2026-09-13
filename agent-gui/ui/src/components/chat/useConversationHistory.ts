@@ -5,7 +5,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import type { ChatMessage } from "../agui/MessageBox";
+import type { ChatMessage } from "./types";
 
 export type ConversationMeta = {
   id: string;
@@ -14,12 +14,46 @@ export type ConversationMeta = {
   updatedAt: number;
 };
 
-const INDEX_KEY = "agui.sessions.index.v1";
-const SESSION_KEY_PREFIX = "agui.session.v1.";
+const INDEX_KEY = "agui.sessions.index.v2";
+const SESSION_KEY_PREFIX = "agui.session.v2.";
+const LEGACY_INDEX_KEY = "agui.sessions.index.v1";
+const LEGACY_SESSION_KEY_PREFIX = "agui.session.v1.";
 const MAX_SESSIONS = 50;
 
 // 新会话不再预置欢迎语：人设与开场氛围由后端 system prompt 决定
 const DEFAULT_MESSAGES: ChatMessage[] = [];
+
+// 消息模型已随 AG-UI 协议对齐重构：一次性清扫 v1 旧数据（用户已确认允许清掉重来）
+function sweepLegacyV1() {
+  try {
+    const indexRaw = window.localStorage.getItem(LEGACY_INDEX_KEY);
+    if (indexRaw) {
+      const parsed = JSON.parse(indexRaw) as unknown;
+      if (Array.isArray(parsed)) {
+        for (const meta of parsed) {
+          if (meta && typeof (meta as ConversationMeta).id === "string") {
+            window.localStorage.removeItem(
+              LEGACY_SESSION_KEY_PREFIX + (meta as ConversationMeta).id,
+            );
+          }
+        }
+      }
+      window.localStorage.removeItem(LEGACY_INDEX_KEY);
+    }
+    const orphans: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith(LEGACY_SESSION_KEY_PREFIX)) {
+        orphans.push(key);
+      }
+    }
+    for (const key of orphans) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // 清扫失败不影响功能
+  }
+}
 
 function readIndex(): ConversationMeta[] | null {
   try {
@@ -48,15 +82,19 @@ function readMessages(id: string): ChatMessage[] | null {
       return null;
     }
     // 持久化的 streaming 状态说明流已随上次进程死亡：判定为中断，避免重启后发送按钮被永久锁死。
-    return (parsed as ChatMessage[]).map((message) =>
-      message.status === "streaming"
-        ? {
-            ...message,
-            status: "error" as const,
-            text: message.text || "[上次回复中断]",
-          }
-        : message,
-    );
+    return (parsed as ChatMessage[]).map((message) => {
+      if (message.status !== "streaming") {
+        return message;
+      }
+      if (message.kind === "text") {
+        return {
+          ...message,
+          status: "error" as const,
+          text: message.text || "[上次回复中断]",
+        };
+      }
+      return { ...message, status: "done" as const };
+    });
   } catch {
     return null;
   }
@@ -87,8 +125,8 @@ function removeMessages(id: string) {
 }
 
 function computeTitle(messages: ChatMessage[]): string {
-  const firstUserMessage = messages.find((message) => message.author === "user");
-  if (!firstUserMessage) {
+  const firstUserMessage = messages.find((message) => message.kind === "user");
+  if (!firstUserMessage?.text) {
     return "新会话";
   }
   const chars = Array.from(firstUserMessage.text);
@@ -119,6 +157,7 @@ type HistoryState = {
 };
 
 function initState(): HistoryState {
+  sweepLegacyV1();
   const stored = readIndex();
   if (stored) {
     const sorted = [...stored].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -175,7 +214,7 @@ export function useConversationHistory(): {
   const startNewConversation = useCallback(() => {
     setState((current) => {
       const hasUserMessage = current.messages.some(
-        (message) => message.author === "user",
+        (message) => message.kind === "user",
       );
       if (!hasUserMessage) {
         // Active session is still empty: don't stack up blank conversations.

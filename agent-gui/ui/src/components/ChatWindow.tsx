@@ -129,8 +129,13 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
     switchConversation,
     updateConversation,
   } = useConversationHistory();
-  const { send, cancel } = useAgentChat(activeId, updateConversation);
-  const isStreaming = messages.some((message) => message.status === "streaming");
+  const { send, cancel, awaitingRun } = useAgentChat(activeId, updateConversation);
+  // awaitingRun 覆盖「已发送、RUN_STARTED 尚未到达」的空窗（此时最后一条必是 user 消息）
+  const isStreaming =
+    messages.some((message) => message.status === "streaming") ||
+    (awaitingRun && messages[messages.length - 1]?.kind === "user");
+  const showTypingIndicator =
+    isStreaming && messages[messages.length - 1]?.kind === "user";
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [gifKey, setGifKey] = useState(initialGifKey);
@@ -313,7 +318,7 @@ function ChatWindow({ onClose, standalone = false }: ChatWindowProps) {
                   }}
                 />
               </div>
-              <MessageBox messages={messages} />
+              <MessageBox messages={messages} pending={showTypingIndicator} />
             </div>
 
             {/* Bottom chat bar: highlighted chip + input + send (left column only) */}

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agent_core::tool::builtin::GetTime;
-use agent_core::{Agent, AgentError, AgentEvent, Provider};
+use agent_core::{Agent, AgentError, AguiEvent, Provider};
 use futures_util::StreamExt;
 use tauri::Manager;
 use tauri::State;
@@ -66,6 +66,7 @@ impl AgentHub {
         }
         let agent = Agent::builder(Provider::OpenRouter, "z-ai/glm-5.3-flash")
             .system(ANGELINA_SYSTEM_PROMPT)
+            .thread_id(id.to_string())
             .tool(GetTime)
             .build()?;
         let agent = Arc::new(Mutex::new(agent));
@@ -79,7 +80,7 @@ async fn chat(
     state: State<'_, AgentHub>,
     conversation_id: String,
     prompt: String,
-    on_event: Channel<AgentEvent>,
+    on_event: Channel<AguiEvent>,
 ) -> Result<(), String> {
     let agent = state
         .get_or_create(&conversation_id)
@@ -93,37 +94,65 @@ async fn chat(
         .await
         .insert(conversation_id.clone(), token.clone());
 
-    let result = forward_chat_stream(agent, &prompt, &on_event, &token).await;
+    let thread_id = conversation_id.clone();
+    let result = forward_chat_stream(agent, &thread_id, &prompt, &on_event, &token).await;
 
     state.cancels.lock().await.remove(&conversation_id);
     result
 }
 
+// select! 抢先取消时可能尚未见到 RUN_STARTED，合成 RUN_ERROR 的 runId 用 "unknown" 兜底。
+fn fallback_run_id(run_id: &Option<String>) -> String {
+    run_id.clone().unwrap_or_else(|| "unknown".to_string())
+}
+
 async fn forward_chat_stream(
     agent: Arc<Mutex<Agent>>,
+    thread_id: &str,
     prompt: &str,
-    on_event: &Channel<AgentEvent>,
+    on_event: &Channel<AguiEvent>,
     token: &CancellationToken,
 ) -> Result<(), String> {
     let mut agent = agent.lock().await;
     let mut stream = std::pin::pin!(agent.run_stream(prompt));
+    // 从 RUN_STARTED 事件抄 runId，用于取消/超时合成 RUN_ERROR；
+    // select! 抢先取消时可能尚未见到 RUN_STARTED，用 "unknown" 兜底。
+    let mut run_id: Option<String> = None;
     loop {
         // cancelled 分支胜出时整个 future 返回，run_stream 随之 drop，
         // 挂起的网络请求/工具执行一并取消。
         let next = tokio::select! {
-            _ = token.cancelled() => return Err("已停止".to_string()),
+            _ = token.cancelled() => {
+                // 取消/超时只走事件路径（前端唯一错误来源），命令本身成功返回，
+                // 避免与 invoke reject 双重报错。
+                let _ = on_event.send(AguiEvent::RunError {
+                    thread_id: thread_id.to_string(),
+                    run_id: fallback_run_id(&run_id),
+                    message: "已停止".to_string(),
+                    code: "CANCELLED".to_string(),
+                });
+                return Ok(());
+            }
             next = tokio::time::timeout(CHAT_IDLE_TIMEOUT, stream.next()) => next,
         };
         match next {
             Err(_) => {
-                return Err(format!(
-                    "模型 {} 秒无响应，已中断",
-                    CHAT_IDLE_TIMEOUT.as_secs()
-                ));
+                let _ = on_event.send(AguiEvent::RunError {
+                    thread_id: thread_id.to_string(),
+                    run_id: fallback_run_id(&run_id),
+                    message: format!(
+                        "模型 {} 秒无响应，已中断",
+                        CHAT_IDLE_TIMEOUT.as_secs()
+                    ),
+                    code: "TIMEOUT".to_string(),
+                });
+                return Ok(());
             }
             Ok(None) => return Ok(()),
             Ok(Some(event)) => {
-                let event = event.map_err(|e| e.to_string())?;
+                if let AguiEvent::RunStarted { run_id: rid, .. } = &event {
+                    run_id = Some(rid.clone());
+                }
                 on_event.send(event).map_err(|e| e.to_string())?;
             }
         }

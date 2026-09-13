@@ -2,8 +2,9 @@
 #[allow(clippy::module_inception)]
 mod agent;
 mod event;
+mod framing;
 mod session;
 
 pub use agent::{Agent, AgentBuilder};
-pub use event::AgentEvent;
+pub use event::{AguiEvent, AguiRole};
 pub use session::Session;
